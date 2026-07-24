@@ -2,12 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   Check,
-  Database,
   Edit3,
-  Languages,
   Loader2,
   Plus,
-  RefreshCw,
   Save,
   Search,
   Trash2,
@@ -24,45 +21,32 @@ const emptyForm = {
 
 function App() {
   const [terms, setTerms] = useState([]);
+  const [query, setQuery] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
-  const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState("전체");
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [status, setStatus] = useState("idle");
   const [notice, setNotice] = useState("");
 
-  const selectedTerm = useMemo(
-    () => terms.find((term) => term.id === editingId) || terms[0],
-    [editingId, terms]
-  );
-
-  const categories = useMemo(() => {
-    const unique = terms
-      .map((term) => term.category)
-      .filter(Boolean)
-      .filter((category, index, list) => list.indexOf(category) === index);
-    return ["전체", ...unique];
-  }, [terms]);
-
   const filteredTerms = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    return terms.filter((term) => {
-      const matchesCategory =
-        activeCategory === "전체" || term.category === activeCategory;
-      const searchable = [term.korean, term.english, term.category, term.memo]
+    if (!normalizedQuery) return terms;
+
+    return terms.filter((term) =>
+      [term.korean, term.english, term.category, term.memo]
         .join(" ")
-        .toLowerCase();
-      return matchesCategory && searchable.includes(normalizedQuery);
-    });
-  }, [activeCategory, query, terms]);
+        .toLowerCase()
+        .includes(normalizedQuery)
+    );
+  }, [query, terms]);
 
   useEffect(() => {
     fetchTerms();
   }, []);
 
   async function fetchTerms() {
-    if (!hasSupabaseConfig) {
-      setNotice("Supabase 환경변수가 없어 데이터베이스에 연결하지 못했습니다.");
+    if (!hasSupabaseConfig || !supabase) {
+      setNotice("Supabase 환경변수를 먼저 설정하세요.");
       return;
     }
 
@@ -82,14 +66,39 @@ function App() {
     setStatus("idle");
   }
 
+  function openCreateModal() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setIsModalOpen(true);
+  }
+
+  function openEditModal(term) {
+    setEditingId(term.id);
+    setForm({
+      korean: term.korean,
+      english: term.english,
+      category: term.category || "",
+      memo: term.memo || "",
+    });
+    setIsModalOpen(true);
+  }
+
+  function closeModal() {
+    setIsModalOpen(false);
+    setEditingId(null);
+    setForm(emptyForm);
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
+
     if (!hasSupabaseConfig || !supabase) {
       setNotice("Supabase 연결 정보를 먼저 설정하세요.");
       return;
     }
+
     if (!form.korean.trim() || !form.english.trim()) {
-      setNotice("한글 단어와 영어 번역은 반드시 입력해야 합니다.");
+      setNotice("한글 단어와 영어 번역을 입력하세요.");
       return;
     }
 
@@ -123,25 +132,9 @@ function App() {
         ? current.map((term) => (term.id === editingId ? data : term))
         : [...current, data].sort((a, b) => a.korean.localeCompare(b.korean))
     );
-    setEditingId(null);
-    setForm(emptyForm);
-    setNotice(editingId ? "번역본을 수정했습니다." : "새 단어를 추가했습니다.");
+    setNotice(editingId ? "단어를 수정했습니다." : "새 단어를 추가했습니다.");
     setStatus("idle");
-  }
-
-  function startEdit(term) {
-    setEditingId(term.id);
-    setForm({
-      korean: term.korean,
-      english: term.english,
-      category: term.category || "",
-      memo: term.memo || "",
-    });
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setForm(emptyForm);
+    closeModal();
   }
 
   async function deleteTerm(termId) {
@@ -163,9 +156,6 @@ function App() {
     }
 
     setTerms((current) => current.filter((term) => term.id !== termId));
-    if (editingId === termId) {
-      cancelEdit();
-    }
     setNotice("단어를 삭제했습니다.");
     setStatus("idle");
   }
@@ -173,20 +163,15 @@ function App() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div className="brand-block">
-          <div className="brand-mark">
-            <Languages size={22} />
-          </div>
-          <div>
-            <p className="eyebrow">Project Sapphire</p>
-            <h1>Glossary Translation Desk</h1>
-          </div>
+        <div>
+          <p className="eyebrow">Project Sapphire</p>
+          <h1>용어 목록</h1>
         </div>
 
-        <div className="connection-pill">
-          <Database size={17} />
-          {hasSupabaseConfig ? "Supabase 연결 준비" : "환경변수 필요"}
-        </div>
+        <button className="icon-button primary-icon" onClick={openCreateModal}>
+          <Plus size={22} />
+          <span className="sr-only">새 단어 추가</span>
+        </button>
       </header>
 
       {!hasSupabaseConfig && (
@@ -205,222 +190,147 @@ function App() {
           <span>{notice}</span>
           <button className="icon-button compact" onClick={() => setNotice("")}>
             <X size={16} />
+            <span className="sr-only">알림 닫기</span>
           </button>
         </section>
       )}
 
-      <section className="overview">
-        <div className="hero-panel">
-          <img
-            src="/images/sapphire-translation-workspace.png"
-            alt="Project Sapphire 영어 번역 작업 데스크"
-          />
-          <div className="hero-copy">
-            <p>Live glossary</p>
-            <h2>한글 단어별 영어 번역본 관리</h2>
-            <span>검색, 추가, 수정, 삭제를 Supabase와 바로 동기화합니다.</span>
-          </div>
-        </div>
-
-        <div className="summary-panel">
-          <article className="metric-card">
-            <span>등록 단어</span>
-            <strong>{terms.length}</strong>
-            <p>Supabase `glossary_terms` 기준</p>
-          </article>
-          <article className="metric-card">
-            <span>현재 목록</span>
-            <strong>{filteredTerms.length}</strong>
-            <p>검색어와 카테고리 필터 반영</p>
-          </article>
-          <div className="search-box">
-            <Search size={18} />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="한글, 영어, 메모 검색"
-            />
-          </div>
-          <button className="secondary-button" onClick={fetchTerms}>
-            <RefreshCw size={18} />
-            새로고침
-          </button>
-        </div>
+      <section className="search-panel" aria-label="용어 검색">
+        <Search size={20} />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="한글 단어 또는 영어 번역 검색"
+          autoComplete="off"
+        />
+        {status === "loading" && <Loader2 className="spin" size={20} />}
       </section>
 
-      <section className="glossary-workbench">
-        <aside className="term-list" aria-label="용어 목록">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Terms</p>
-              <h2>용어 목록</h2>
-            </div>
-            {status === "loading" && <Loader2 className="spin" size={19} />}
-          </div>
+      <section className="list-header">
+        <span>전체 {terms.length}개</span>
+        <span>표시 {filteredTerms.length}개</span>
+      </section>
 
-          <div className="tabs" role="tablist" aria-label="카테고리">
-            {categories.slice(0, 4).map((category) => (
-              <button
-                className={`tab ${activeCategory === category ? "active" : ""}`}
-                key={category}
-                onClick={() => setActiveCategory(category)}
-              >
-                {category}
+      <section className="term-list" aria-label="용어 목록">
+        {filteredTerms.map((term) => (
+          <article className="term-row" key={term.id}>
+            <div className="term-copy">
+              <strong>{term.korean}</strong>
+              <span>{term.english}</span>
+              {(term.category || term.memo) && (
+                <small>
+                  {[term.category, term.memo].filter(Boolean).join(" · ")}
+                </small>
+              )}
+            </div>
+
+            <div className="row-actions">
+              <button className="icon-button" onClick={() => openEditModal(term)}>
+                <Edit3 size={18} />
+                <span className="sr-only">수정</span>
               </button>
-            ))}
-          </div>
-
-          <div className="term-stack">
-            {filteredTerms.map((term) => (
-              <article
-                className={`term-row ${selectedTerm?.id === term.id ? "selected" : ""}`}
-                key={term.id}
+              <button
+                className="icon-button danger"
+                onClick={() => deleteTerm(term.id)}
+                disabled={status === "saving"}
               >
-                <button onClick={() => startEdit(term)}>
-                  <span className="term-main">
-                    <strong>{term.korean}</strong>
-                    <small>{term.english}</small>
-                  </span>
-                  {term.category && <span className="status">{term.category}</span>}
-                </button>
-              </article>
-            ))}
-            {!filteredTerms.length && (
-              <div className="empty-state">표시할 단어가 없습니다.</div>
-            )}
-          </div>
-        </aside>
-
-        <section className="editor-panel" aria-label="단어 추가 및 수정">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Editor</p>
-              <h2>{editingId ? "번역본 수정" : "새 단어 추가"}</h2>
+                <Trash2 size={18} />
+                <span className="sr-only">삭제</span>
+              </button>
             </div>
-          </div>
+          </article>
+        ))}
 
-          <form className="term-form" onSubmit={handleSubmit}>
-            <label>
-              <span>한글 단어</span>
-              <input
-                value={form.korean}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    korean: event.target.value,
-                  }))
-                }
-                placeholder="예: 검수"
-              />
-            </label>
+        {!filteredTerms.length && (
+          <div className="empty-state">검색 결과가 없습니다.</div>
+        )}
+      </section>
 
-            <label>
-              <span>영어 번역</span>
-              <input
-                value={form.english}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    english: event.target.value,
-                  }))
-                }
-                placeholder="예: review"
-              />
-            </label>
+      {isModalOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="modal" role="dialog" aria-modal="true">
+            <div className="modal-header">
+              <h2>{editingId ? "단어 수정" : "새 단어 추가"}</h2>
+              <button className="icon-button compact" onClick={closeModal}>
+                <X size={17} />
+                <span className="sr-only">닫기</span>
+              </button>
+            </div>
 
-            <label>
-              <span>카테고리</span>
-              <input
-                value={form.category}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    category: event.target.value,
-                  }))
-                }
-                placeholder="예: Legal, UI, Marketing"
-              />
-            </label>
+            <form className="term-form" onSubmit={handleSubmit}>
+              <label>
+                <span>한글 단어</span>
+                <input
+                  value={form.korean}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      korean: event.target.value,
+                    }))
+                  }
+                  placeholder="예: 송전망"
+                />
+              </label>
 
-            <label>
-              <span>메모</span>
-              <textarea
-                value={form.memo}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, memo: event.target.value }))
-                }
-                placeholder="사용 맥락이나 금지 표현을 적어두세요."
-              />
-            </label>
+              <label>
+                <span>영어 번역</span>
+                <input
+                  value={form.english}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      english: event.target.value,
+                    }))
+                  }
+                  placeholder="예: Transmission Grid"
+                />
+              </label>
 
-            <div className="form-actions">
-              {editingId && (
-                <button className="ghost-button" type="button" onClick={cancelEdit}>
-                  <X size={18} />
+              <label>
+                <span>카테고리</span>
+                <input
+                  value={form.category}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      category: event.target.value,
+                    }))
+                  }
+                  placeholder="선택 입력"
+                />
+              </label>
+
+              <label>
+                <span>메모</span>
+                <textarea
+                  value={form.memo}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      memo: event.target.value,
+                    }))
+                  }
+                  placeholder="선택 입력"
+                />
+              </label>
+
+              <div className="form-actions">
+                <button className="ghost-button" type="button" onClick={closeModal}>
                   취소
                 </button>
-              )}
-              <button
-                className="primary-button"
-                type="submit"
-                disabled={!hasSupabaseConfig || status === "saving"}
-              >
-                {editingId ? <Save size={18} /> : <Plus size={18} />}
-                {editingId ? "수정 저장" : "단어 추가"}
-              </button>
-            </div>
-          </form>
-        </section>
-
-        <aside className="detail-panel" aria-label="선택된 용어 상세">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Preview</p>
-              <h2>번역 상세</h2>
-            </div>
-          </div>
-
-          {selectedTerm ? (
-            <article className="term-detail">
-              <span className="detail-label">한글</span>
-              <strong>{selectedTerm.korean}</strong>
-              <span className="detail-label">영어</span>
-              <p>{selectedTerm.english}</p>
-              {selectedTerm.category && (
-                <>
-                  <span className="detail-label">카테고리</span>
-                  <p>{selectedTerm.category}</p>
-                </>
-              )}
-              {selectedTerm.memo && (
-                <>
-                  <span className="detail-label">메모</span>
-                  <p>{selectedTerm.memo}</p>
-                </>
-              )}
-              <div className="detail-actions">
                 <button
-                  className="secondary-button"
-                  onClick={() => startEdit(selectedTerm)}
+                  className="primary-button"
+                  type="submit"
+                  disabled={!hasSupabaseConfig || status === "saving"}
                 >
-                  <Edit3 size={18} />
-                  수정
-                </button>
-                <button
-                  className="danger-button"
-                  onClick={() => deleteTerm(selectedTerm.id)}
-                  disabled={status === "saving"}
-                >
-                  <Trash2 size={18} />
-                  삭제
+                  <Save size={18} />
+                  저장
                 </button>
               </div>
-            </article>
-          ) : (
-            <div className="empty-state">단어를 선택하거나 새로 추가하세요.</div>
-          )}
-        </aside>
-      </section>
+            </form>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
