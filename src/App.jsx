@@ -15,7 +15,6 @@ import { hasSupabaseConfig, supabase } from "./lib/supabaseClient";
 const emptyForm = {
   korean: "",
   english: "",
-  category: "",
   memo: "",
 };
 
@@ -33,7 +32,7 @@ function App() {
     if (!normalizedQuery) return terms;
 
     return terms.filter((term) =>
-      [term.korean, term.english, term.category, term.memo]
+      [term.korean, term.english, term.memo]
         .join(" ")
         .toLowerCase()
         .includes(normalizedQuery)
@@ -77,7 +76,6 @@ function App() {
     setForm({
       korean: term.korean,
       english: term.english,
-      category: term.category || "",
       memo: term.memo || "",
     });
     setIsModalOpen(true);
@@ -106,7 +104,7 @@ function App() {
     const payload = {
       korean: form.korean.trim(),
       english: form.english.trim(),
-      category: form.category.trim(),
+      category: "",
       memo: form.memo.trim(),
     };
 
@@ -217,11 +215,7 @@ function App() {
             <div className="term-copy">
               <strong>{term.korean}</strong>
               <span>{term.english}</span>
-              {(term.category || term.memo) && (
-                <small>
-                  {[term.category, term.memo].filter(Boolean).join(" · ")}
-                </small>
-              )}
+              {term.memo && <small>{term.memo}</small>}
             </div>
 
             <div className="row-actions">
@@ -283,20 +277,6 @@ function App() {
                     }))
                   }
                   placeholder="예: Transmission Grid"
-                />
-              </label>
-
-              <label>
-                <span>카테고리</span>
-                <input
-                  value={form.category}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      category: event.target.value,
-                    }))
-                  }
-                  placeholder="선택 입력"
                 />
               </label>
 
